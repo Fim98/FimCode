@@ -28,6 +28,22 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "edit_file",
+    description: "通过替换唯一字符串对文件进行精确编辑",
+    input_schema: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        old_str: {
+          type: "string",
+          description: "要查找的确切字符串(必须在文件中唯一)",
+        },
+        new_str: { type: "string", description: "用其替换的字符串" },
+      },
+      required: ["path", "old_str", "new_str"],
+    },
+  },
+  {
     name: "run_bash",
     description: "运行 bash 命令",
     input_schema: {
@@ -53,6 +69,26 @@ async function executeTool(name: string, input: any): Promise<string> {
     try {
       await Bun.write(input.path, input.content);
       return `成功写入${input.path}`;
+    } catch (e: any) {
+      return `错误：${e.message}`;
+    }
+  } else if (name === "edit_file") {
+    try {
+      const file = Bun.file(input.path);
+      const content = await file.text();
+
+      const count = content.split(input.old_str).length - 1;
+      if (count === 0) {
+        return `错误：'${input.old_str}' 未在文件中找到`;
+      }
+      if (count > 1) {
+        return `错误：'${input.old_str}' 找到${count}个匹配项，只能替换一个`;
+      }
+
+      const newContent = content.replace(input.old_str, input.new_str);
+      await Bun.write(input.path, newContent);
+
+      return `成功替换${input.path}`;
     } catch (e: any) {
       return `错误：${e.message}`;
     }
