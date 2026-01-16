@@ -113,6 +113,19 @@ async function compactConversation(
   ];
 }
 
+async function delegateToSubagent(
+  task: string,
+  toolsAllowed: Anthropic.Tool[]
+): Promise<string> {
+  const result = await runAgent({
+    task: task,
+    tools: toolsAllowed,
+    maxTurns: 10,
+  });
+  // 只返回结果，不返回完整对话
+  return result.finalAnswer;
+}
+
 async function executeTool(name: string, input: any): Promise<string> {
   if (name === "read_file") {
     try {
