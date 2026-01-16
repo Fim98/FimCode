@@ -44,6 +44,32 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "glob",
+    description: "查找匹配模式的文件",
+    input_schema: {
+      type: "object",
+      properties: {
+        pattern: {
+          type: "string",
+          description: "Glob 模式，例如 '**/*.ts'",
+        },
+      },
+      required: ["pattern"],
+    },
+  },
+  {
+    name: "grep",
+    description: "在文件中搜索正则表达式模式",
+    input_schema: {
+      type: "object",
+      properties: {
+        pattern: { type: "string", description: "要搜索的正则表达式模式" },
+        path: { type: "string", description: "要搜索的目录或文件" },
+      },
+      required: ["pattern", "path"],
+    },
+  },
+  {
     name: "run_bash",
     description: "运行 bash 命令",
     input_schema: {
@@ -89,6 +115,26 @@ async function executeTool(name: string, input: any): Promise<string> {
       await Bun.write(input.path, newContent);
 
       return `成功替换${input.path}`;
+    } catch (e: any) {
+      return `错误：${e.message}`;
+    }
+  } else if (name === "glob") {
+    try {
+      const glob = new Bun.Glob(input.pattern);
+      const files = Array.from(glob.scanSync());
+      return files.join("\n");
+    } catch (e: any) {
+      return `错误：${e.message}`;
+    }
+  } else if (name === "grep") {
+    try {
+      const proc = Bun.spawn(["grep", "-r", input.pattern, input.path], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const output = await new Response(proc.stdout).text();
+      const error = await new Response(proc.stderr).text();
+      return output + error;
     } catch (e: any) {
       return `错误：${e.message}`;
     }
