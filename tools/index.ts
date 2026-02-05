@@ -3,15 +3,17 @@ import { EDIT_FILE, runEdit } from './edit_file'
 import { READ_FILE, runRead } from './read_file'
 import { runWrite, WRITE_FILE } from './write_file'
 import {runTodo, TODO_WRITE } from './todo'
+import type Anthropic from '@anthropic-ai/sdk'
 import type { TodoItem } from '../manager/TodoManager'
-export const Tools = [
+import { AGENT_TYPES, runTask, type AgentType } from './task'
+
+export const BASE_TOOLS: Anthropic.Tool[] = [
   BASH_TOOL,
   READ_FILE,
   WRITE_FILE,
   EDIT_FILE,
   TODO_WRITE
 ]
-
 
 /**
  * 将工具调用分发到相应的实现。
@@ -31,7 +33,15 @@ export async function executeTool(name: string, args: Record<string, any>): Prom
       return runEdit(args.path as string, args.old_text as string, args.new_text as string)
     case "todo_write":
       return runTodo(args.items as TodoItem[])
+    case "Task":
+      return runTask(
+        args.description as string,
+        args.prompt as string,
+        args.agent_type as AgentType
+      )
     default:
       return `未知工具：${name}`
   }
 }
+
+

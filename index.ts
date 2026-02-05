@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import Anthropic from "@anthropic-ai/sdk";
-import { executeTool, Tools } from "./tools";
+import { BASE_TOOLS,  executeTool } from "./tools";
+import { TASK } from "./tools/task";
 
 // 配置
 const client = new Anthropic({
@@ -37,6 +38,14 @@ const NAG_REMINDER =
 // 跟踪自上次更新待办事项以来的轮数
 let roundsWithoutTodo = 0;
 
+
+
+// 主agent获得包括任务在内的所有工具
+const ALL_TOOLS: Anthropic.Tool[] = [...BASE_TOOLS, TASK]
+
+
+
+
 // agent loop
 async function agentLoop(messages: Anthropic.MessageParam[]): Promise<void> {
   while (true) {
@@ -45,7 +54,7 @@ async function agentLoop(messages: Anthropic.MessageParam[]): Promise<void> {
       model: MODEL,
       system: SYSTEM_PROMPT,
       messages,
-      tools: Tools,
+      tools: ALL_TOOLS,
       max_tokens: 8000,
     });
 
@@ -72,15 +81,25 @@ async function agentLoop(messages: Anthropic.MessageParam[]): Promise<void> {
     let usedTodo = false;
 
     for (const tc of toolCalls) {
-      // 显示正在执行的内容
-      console.log(`\n> ${tc.name}:`);
+      // Task工具有特殊显示处理
+      if(tc.name === 'Task'){
+        console.log(`\n> 任务： ${tc.input.description}`)
+      }else {
+        console.log(`\n> ${tc.name}`)
+      }
 
       // 执行并显示结果预览
       const output = await executeTool(tc.name, tc.input);
-      const preview =
-        output.length > 300 ? output.slice(0, 300) + "..." : output;
-      console.log(` ${preview}`);
 
+      // 不打印完整 Task 输出 (它管理自己的显示)
+      if (tc.name !== 'Task') {
+        const preview = output.length > 200 
+          ? output.slice(0, 200) + '...' 
+          : output;
+        console.log(`  ${preview}`);
+      }
+
+      
       results.push({
         type: "tool_result",
         tool_use_id: tc.id,
