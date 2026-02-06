@@ -1,13 +1,6 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { BASE_TOOLS, executeTool } from ".";
-
-
-// 配置
-const client = new Anthropic({
-  baseURL: process.env.ANTHROPIC_BASE_URL,
-  apiKey: process.env.ANTHROPIC_AUTH_TOKEN,
-});
-const MODEL = "gemini-3-flash-preview";
+import type Anthropic from "@anthropic-ai/sdk";
+import { client, MODEL } from "../config";
+import { execute, getBaseTools } from "./registry";
 /**
  * 代理类型配置
  */
@@ -56,7 +49,7 @@ export const AGENT_TYPES: Record<AgentType, AgentConfig> = {
 /**
  * 为系统提示生成代理类型描述
  */
-function getAgentDescriptions(): string {
+export function getAgentDescriptions(): string {
   return Object.entries(AGENT_TYPES)
     .map(([name, cfg]) => `- ${name}: ${cfg.description}`)
     .join('\n');
@@ -105,13 +98,11 @@ ${getAgentDescriptions()}
  * '*' 表示所有工具（但子代理不会获得Task工具以防止无限递归）
  */
 function getToolsForAgent(agentType: AgentType): Anthropic.Tool[] {
-  const allowed = AGENT_TYPES[agentType].tools
+  const allowed = AGENT_TYPES[agentType].tools;
+  const base = getBaseTools();
 
-  if(allowed === '*'){
-    return BASE_TOOLS
-  }
-
-  return BASE_TOOLS.filter(t => allowed.includes(t.name))
+  if (allowed === "*") return base;
+  return base.filter((t) => allowed.includes(t.name));
 }
 
 /**
@@ -175,7 +166,7 @@ export async function runTask(description: string, prompt: string, agentType: Ag
 
     for(const tc of toolCalls){
       toolCount++
-      const output = await executeTool(tc.name, tc.input)
+      const output = await execute(tc.name, tc.input as Record<string, unknown>)
       results.push({
         type: 'tool_result',
         tool_use_id: tc.id,
@@ -195,24 +186,21 @@ export async function runTask(description: string, prompt: string, agentType: Ag
   const elapsed = ((Date.now() - startTime) /1000).toFixed(1)
   process.stdout.write(`\r  [${agentType}] ${description} - 完成 (${toolCount} 个工具, ${elapsed}s)\n`);
 
-  // 提取并仅返回最终文本
-  // 这是父代理看到的 - 一个干净的摘要
- const textBlocks = subMessages?.[subMessages.length - 1]?.content?.filter(
-    (b): b is Anthropic.TextBlock => b.type === 'text'
-  );
-
- if (textBlocks.length > 0) {
-    // 获取最后一条助手消息的文本
-    const lastAssistant = subMessages.filter(m => m.role === 'assistant').pop();
-    if (lastAssistant) {
-      const finalText = lastAssistant.content?.filter(
-        (b): b is Anthropic.TextBlock => b.type === 'text'
-      );
-      if (finalText.length > 0) {
-        return finalText.map(b => b.text).join('\n');
-      }
+  // 提取最后一条助手消息的文本作为摘要
+  const lastAssistant = subMessages
+    .filter((m) => m.role === "assistant")
+    .pop() as { role: "assistant"; content: Anthropic.ContentBlockParam[] } | undefined;
+  if (lastAssistant) {
+    const content = lastAssistant.content;
+    const blocks = Array.isArray(content)
+      ? content.filter(
+          (b): b is Anthropic.TextBlock => b.type === "text"
+        )
+      : [];
+    if (blocks.length > 0) {
+      return blocks.map((b) => b.text).join("\n");
     }
   }
 
-  return '(子代理未返回文本)'
+  return "(子代理未返回文本)";
 }
