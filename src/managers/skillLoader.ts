@@ -1,11 +1,15 @@
-// 技能数据结构
-interface Skill {
-  name: string;
-  description: string;
-  body: string;
-  path: string;
-  dir: string;
-}
+import type { Skill, SkillResourceType } from "../types";
+import { skillsDir } from "../config";
+import { logger } from "../utils/logger";
+
+/**
+ * 技能资源标签映射
+ */
+const RESOURCE_LABELS: Record<SkillResourceType, string> = {
+  scripts: "脚本",
+  references: "参考文档",
+  assets: "资源",
+};
 
 /**
  * 从 SKILL.md 文件加载和管理技能。
@@ -29,7 +33,7 @@ interface Skill {
 export class SkillLoader {
   private skills: Map<string, Skill> = new Map();
 
-  constructor(private skillsDir: string) {}
+  constructor(private readonly skillsDir: string) {}
 
   /**
    * 将 SKILL.md 文件解析为元数据和主体。
@@ -81,28 +85,31 @@ export class SkillLoader {
    * 启动时只加载元数据 - 主体按需加载。
    */
   async load(): Promise<void> {
-    const skillsPath = this.skillsDir;
+    logger.logToolCall("SkillLoader", "开始加载技能");
 
     try {
       const entries = Array.from(
-        new Bun.Glob("*").scanSync({ cwd: skillsPath, onlyFiles: false })
+        new Bun.Glob("*").scanSync({ cwd: this.skillsDir, onlyFiles: false })
       );
 
       for (const entry of entries) {
-        const skillDir = `${skillsPath}/${entry}`;
+        const skillDir = `${this.skillsDir}/${entry}`;
         const skillMdPath = `${skillDir}/SKILL.md`;
 
         try {
           const skill = await this.parseSkillMd(skillMdPath);
           if (skill) {
             this.skills.set(skill.name, skill);
+            logger.debug(`已加载技能: ${skill.name}`);
           }
         } catch {
           // 跳过无效目录
         }
       }
-    } catch {
-      // 技能目录不存在
+
+      logger.logToolCall("SkillLoader", `加载完成，共 ${this.skills.size} 个技能`);
+    } catch (error) {
+      logger.warn(`技能目录加载失败: ${error}`);
     }
   }
 
@@ -129,11 +136,10 @@ export class SkillLoader {
     let content = `# 技能: ${skill.name}\n\n${skill.body}`;
 
     const resources: string[] = [];
-    for (const [folder, label] of [
-      ["scripts", "脚本"],
-      ["references", "参考文档"],
-      ["assets", "资源"],
-    ] as const) {
+    for (const [folder, label] of Object.entries(RESOURCE_LABELS) as [
+      SkillResourceType,
+      string
+    ][]) {
       const folderPath = `${skill.dir}/${folder}`;
       try {
         const files = Array.from(
@@ -155,7 +161,22 @@ export class SkillLoader {
     return content;
   }
 
+  /**
+   * 列出所有技能名称
+   */
   listSkills(): string[] {
     return Array.from(this.skills.keys());
   }
+
+  /**
+   * 获取技能数量
+   */
+  get count(): number {
+    return this.skills.size;
+  }
 }
+
+/**
+ * 全局技能加载器实例
+ */
+export const skillLoader = new SkillLoader(skillsDir);
